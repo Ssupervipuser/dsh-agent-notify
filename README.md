@@ -46,6 +46,10 @@ node dsh-agent-notify/test/install.mjs
 
 脚本会：备份 profile 清单 → 发布 `lib/releases/impl-<build>.js` → 写入稳定入口 shim → 更新 `package.json` 依赖与 `dsh.profile.bundles`。
 
+> **Windows 硬链接**：pnpm 安装 `file:` 依赖时是用**硬链接**把插件连进 `node_modules` 的，所以安装副本里的文件和插件源码通常是**同一个文件**（`fsutil hardlink list <安装副本里的文件>` 会同时列出两个路径）。此时往里写不是“复制”而是**直接改源文件**：`writeFileSync` 会把源码截断成 shim，`cpSync` 会直接报 `ERR_FS_CP_EINVAL`。脚本已在每次写入前先 `rmSync` 掉目标目录项（`detach()`）来断开硬链接，所以正常情况是安全的；跑完会打印 `broke N hardlink(s)` 告诉你断开了哪些。
+>
+> 想验证这一点（不会动到真实 profile）：`node test/hardlink-safety.mjs`，它在临时目录里按同样方式建硬链接再跑安装，然后断言源码哈希没变。也可以设 `DSH_PROFILE_DIR=<某目录>` 把安装重定向到沙盒里。
+
 **热更新原理**：DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以安装副本里 `lib/index.js` 是一个永不变化的 shim，它每次激活时读 `lib/current-build.txt` 并 `import()` 对应的 `lib/releases/impl-*.js`；重新发布后只要配置重载（保存 profile `package.json` / 行开关切换都会触发），新代码就生效，**无需重启应用**。工作区里的 `lib/index.js` 始终是真正的实现源码。
 
 如果改了 `lib/index.js` 之后没有自动生效：切换一下插件行开关（`cordis.patch.yml` 里 `- id: agent-notify` + `disabled: true` 保存，再改回 `false`），或重启应用。
@@ -74,7 +78,8 @@ node dsh-agent-notify/test/install.mjs
 | `lib/card.ps1` | 原生置顶通知卡片（兜底） |
 | `cordis.patch.yml` | bundle patch：插入 `agent-notify` 行 |
 | `test/manual-test.mjs` | 无 DSH 的本地验证（逻辑自检 + 真实弹通知） |
-| `test/install.mjs` | 安装/更新到 profile（含热更新 shim） |
+| `test/install.mjs` | 安装/更新到 profile（含热更新 shim；写入前断开硬链接） |
+| `test/hardlink-safety.mjs` | 回归测试：在沙盒里复现 pnpm 硬链接布局，断言安装不会破坏源码 |
 | `test/hot-reload-probe.mjs` | 切换插件行开关，验证配置重载 |
 | `docs/toast-verified.png` | 实测截图：任务完成通知 |
 | `docs/toast-alerts.png` | 实测截图：需要选择通知 |

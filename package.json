@@ -9,6 +9,10 @@
     ".": "./lib/index.js",
     "./package.json": "./package.json"
   },
+  "scripts": {
+    "test": "node test/hardlink-safety.mjs",
+    "test:manual": "node test/manual-test.mjs"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
