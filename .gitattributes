@@ -1,0 +1,8 @@
+# Normalize line endings in the repository so a Windows clone (where the system
+# gitconfig commonly sets core.autocrlf=true) does not rewrite every file.
+# Text files are stored with LF; binary verification screenshots are untouched.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

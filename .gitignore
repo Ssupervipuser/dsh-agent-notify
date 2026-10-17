@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Install-time / build artifacts — never commit.
+#
+# test/install.mjs implements the hot-reload scheme described in README: it
+# publishes the implementation as a freshly named `lib/releases/impl-<build>.js`
+# inside the *installed* copy and rewrites `lib/current-build.txt` to point at
+# it. Those paths are per-machine state regenerated on every install, so
+# committing them would pin one machine's stale build (and its timestamped build
+# id) into the repository. The workspace copy of `lib/index.js` is the canonical
+# source and IS tracked.
+# ---------------------------------------------------------------------------
+node_modules/
+lib/releases/
+lib/current-build.txt
+
+# Common noise
+*.log
+Thumbs.db
+.DS_Store
+
+# Transient desktop screenshot written by docs/capture.ps1.
+# NOTE: docs/toast-verified.png and docs/toast-alerts.png are real verification
+# screenshots and are intentionally tracked.
+docs/capture.png

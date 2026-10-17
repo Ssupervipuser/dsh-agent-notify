@@ -1,0 +1,41 @@
+# dsh-agent-notify bundle patch.
+#
+# One host row: lib/index.js watches root agent activity and sends real Windows
+# notifications (lib/notify.ps1 → WinRT toast, shown by Windows as a system
+# notification under the DeepSeek Harness name) for three waiting moments:
+#   1. a run finished (agent back to idle after closing a turn);
+#   2. a tool call waits for the user to grant permission (`approval/asked`);
+#   3. the agent asks the user a question (`ask_user_question` tool call).
+# The bundled native card in lib/card.ps1 is only a fallback for systems without
+# the toast API.
+#
+# The row config replaces this whole object, so keep every key you want to change.
+- insert:
+    - id: agent-notify
+      name: dsh-agent-notify
+      config:
+        enabled: true
+        # Only notify when the run lasted at least this many seconds (0 = always).
+        minDurationSec: 0
+        # Toast duration: 'long' (≈25 s) or 'short' (≈5 s).
+        duration: long
+        # Mute the toast sound.
+        silent: false
+        # Extra AppUserModelID to use; empty = the desktop app's own AUMID first,
+        # then a DSH-owned fallback AUMID.
+        appId: ''
+        # Draw the bundled native card when the toast API is unavailable.
+        fallbackCard: true
+        # How long that fallback card stays on screen, in seconds.
+        cardSeconds: 8
+        # Skip the notification when the DSH window title already shows that session.
+        skipWhenForeground: false
+        # Override the headline; empty = per-reason headline (任务完成 / 任务出错 …).
+        title: ''
+        # Notify when a tool call waits for the user to grant permission.
+        notifyApprovals: true
+        # Notify when the agent asks the user a question.
+        notifyQuestions: true
+        # Minimum seconds between two waiting alerts for the same session+kind,
+        # so retries cannot spam the desktop.
+        alertCooldownSec: 20
