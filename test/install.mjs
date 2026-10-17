@@ -20,7 +20,7 @@
 //     the same"), aborting the install halfway.
 // Every write into the installed tree therefore goes through `detach()` below,
 // which drops the directory entry first so the write lands on a fresh inode.
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -59,6 +59,68 @@ function detach(dest, source) {
   if (!existsSync(dest)) return
   if (source && sameFile(source, dest)) detached.push(path.relative(profileDir, dest))
   rmSync(dest, { force: true })
+}
+
+// Resolve `p` even when its tail does not exist yet: realpath the longest
+// existing prefix (following junctions/symlinks) and re-append the rest.
+function resolveReal(p) {
+  let prefix = p
+  const tail = []
+  while (!existsSync(prefix)) {
+    tail.unshift(path.basename(prefix))
+    const parent = path.dirname(prefix)
+    if (parent === prefix) break
+    prefix = parent
+  }
+  return path.join(realpathSync(prefix), ...tail)
+}
+
+// A DIRECTORY reparse point (junction / symlink) is a different threat from a
+// hardlink, and detach() cannot defend against it: if the installed directory
+// resolves back into the canonical plugin (pnpm `link:`, link-workspace-packages,
+// npm link, or a manually junctioned node_modules), then dest and source are the
+// same file, so detach()'s rmSync DELETES the canonical file and the next cpSync
+// aborts with ENOENT — leaving the source tree emptied. Hardlinks are invisible
+// to realpathSync, so this check only rejects directory reparse points and the
+// hardlink handling above still does the real work.
+function assertOutsideCanonical(p, label) {
+  const real = resolveReal(p)
+  const root = realpathSync(pluginDir)
+  const [a, b] = process.platform === 'win32' ? [real.toLowerCase(), root.toLowerCase()] : [real, root]
+  if (a === b || a.startsWith(b + path.sep)) {
+    throw new Error(
+      `${label} resolves into the canonical plugin:\n  ${p}\n  -> ${real}\n` +
+        'Refusing to install: writing there would overwrite or delete the plugin source.',
+    )
+  }
+}
+
+// Refuse to touch anything before the first write if the destination is redirected
+// into the canonical source tree.
+for (const [p, label] of [
+  [profileDir, 'profile dir'],
+  [targetDir, 'installed plugin dir'],
+  [path.join(targetDir, 'lib'), 'installed lib dir'],
+  [path.join(targetDir, 'lib', 'releases'), 'installed releases dir'],
+  [manifestPath, 'profile manifest'],
+]) {
+  assertOutsideCanonical(p, label)
+}
+
+// Validate the target BEFORE writing anything. Without this the backup and the
+// published build would already exist for a profile we then reject, which looks
+// like a half-finished install rather than a clean refusal.
+if (!existsSync(manifestPath)) {
+  throw new Error(
+    `not a dsh profile (no package.json):\n  ${profileDir}\n` +
+      'Point DSH_PROFILE_DIR at an existing profile directory.',
+  )
+}
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+if (!Array.isArray(manifest.dsh?.profile?.bundles)) {
+  throw new Error(
+    `unexpected profile manifest: dsh.profile.bundles missing\n  ${manifestPath}`,
+  )
 }
 
 // Stable shim: the only module URL the host caches. It reads the current build
@@ -126,7 +188,7 @@ detach(path.join(targetDir, 'cordis.patch.yml'), path.join(pluginDir, 'cordis.pa
 cpSync(path.join(pluginDir, 'cordis.patch.yml'), path.join(targetDir, 'cordis.patch.yml'))
 detach(path.join(targetDir, 'README.md'), path.join(pluginDir, 'README.md'))
 cpSync(path.join(pluginDir, 'README.md'), path.join(targetDir, 'README.md'))
-detach(path.join(targetDir, 'package.json'))
+detach(path.join(targetDir, 'package.json'), path.join(pluginDir, 'package.json'))
 writeFileSync(
   path.join(targetDir, 'package.json'),
   `${JSON.stringify(JSON.parse(readFileSync(path.join(pluginDir, 'package.json'), 'utf8')), null, 2)}\n`,
@@ -147,12 +209,10 @@ for (const legacy of legacyDirs) {
 }
 
 // 5. Profile manifest: dependency + bundle selection.
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 manifest.dependencies = manifest.dependencies ?? {}
 delete manifest.dependencies['dsh-task-notify']
 manifest.dependencies[packageName] = `file:${pluginDir.replace(/\\/g, '/')}`
-const bundles = manifest.dsh?.profile?.bundles
-if (!Array.isArray(bundles)) throw new Error('unexpected profile manifest: dsh.profile.bundles missing')
+const bundles = manifest.dsh.profile.bundles
 const filtered = bundles.filter((name) => name !== 'dsh-task-notify' && name !== packageName)
 filtered.push(packageName)
 manifest.dsh.profile.bundles = filtered

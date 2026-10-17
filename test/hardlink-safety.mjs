@@ -14,7 +14,7 @@
 // Run: node test/hardlink-safety.mjs
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -115,6 +115,52 @@ try {
   const mod = await import(pathToFileURL(installedIndex).href)
   check('installed shim exposes apply()', typeof mod.apply === 'function')
   check('installed shim keeps the plugin name', mod.name === 'agent-notify', String(mod.name))
+
+  // --- directory reparse points (junctions / symlinks) must be REFUSED ---
+  // If node_modules/dsh-agent-notify resolves back into the plugin, dest and
+  // source are the same file; detach()'s rmSync would then DELETE the canonical
+  // file and the following cpSync would abort with ENOENT. The installer must
+  // refuse before writing anything.
+  const junctionSandbox = path.join(sandbox, 'junction')
+  const junctionTarget = path.join(junctionSandbox, 'node_modules', 'dsh-agent-notify')
+  mkdirSync(path.dirname(junctionTarget), { recursive: true })
+  writeFileSync(
+    path.join(junctionSandbox, 'package.json'),
+    `${JSON.stringify({ name: 'junction-profile', dsh: { profile: { bundles: ['dsh-agent-notify'] } } }, null, 2)}\n`,
+    'utf8',
+  )
+  try {
+    symlinkSync(pluginDir, junctionTarget, 'junction')
+  } catch (error) {
+    check('could create junction to test dir-reparse case', false, error.message)
+  }
+
+  if (existsSync(junctionTarget)) {
+    const junctionRun = spawnSync(process.execPath, [installer], {
+      env: { ...process.env, DSH_PROFILE_DIR: junctionSandbox },
+      encoding: 'utf8',
+    })
+    check(
+      'installer REFUSES a profile whose plugin dir is a junction into the source',
+      junctionRun.status !== 0,
+      `exit ${junctionRun.status}`,
+    )
+    check(
+      'refusal explains it resolves into the canonical plugin',
+      /resolves into the canonical plugin/i.test(junctionRun.stderr || ''),
+      (junctionRun.stderr || '').split('\n').find((l) => /resolves into/i.test(l)) || 'no message',
+    )
+    // The canonical source must be fully intact after the refused run.
+    for (const [source] of INSTALLED) {
+      const p = path.join(pluginDir, source)
+      check(
+        `canonical ${source} intact after refused junction run`,
+        existsSync(p) && sha(p) === before[source],
+        existsSync(p) ? '' : 'FILE WAS DELETED',
+      )
+    }
+    check('no lib/releases/ created inside the canonical source tree', !existsSync(path.join(pluginDir, 'lib', 'releases', buildName)))
+  }
 } catch (error) {
   check('test ran without throwing', false, error.message)
 } finally {

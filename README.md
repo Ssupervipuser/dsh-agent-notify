@@ -46,9 +46,11 @@ node dsh-agent-notify/test/install.mjs
 
 脚本会：备份 profile 清单 → 发布 `lib/releases/impl-<build>.js` → 写入稳定入口 shim → 更新 `package.json` 依赖与 `dsh.profile.bundles`。
 
-> **Windows 硬链接**：pnpm 安装 `file:` 依赖时是用**硬链接**把插件连进 `node_modules` 的，所以安装副本里的文件和插件源码通常是**同一个文件**（`fsutil hardlink list <安装副本里的文件>` 会同时列出两个路径）。此时往里写不是“复制”而是**直接改源文件**：`writeFileSync` 会把源码截断成 shim，`cpSync` 会直接报 `ERR_FS_CP_EINVAL`。脚本已在每次写入前先 `rmSync` 掉目标目录项（`detach()`）来断开硬链接，所以正常情况是安全的；跑完会打印 `broke N hardlink(s)` 告诉你断开了哪些。
+> **Windows 硬链接**：pnpm 安装 `file:` 依赖时是用**硬链接**把插件连进 `node_modules` 的，所以安装副本里的文件和插件源码通常是**同一个文件**（`fsutil hardlink list <安装副本里的文件>` 会同时列出两个路径）。此时往里写不是“复制”而是**直接改源文件**：`writeFileSync` 会把源码截断成 shim，`cpSync` 会直接报 `ERR_FS_CP_EINVAL`。脚本已在每次写入前先 `rmSync` 掉目标目录项（`detach()`）来断开硬链接，所以正常情况是安全的；跑完会打印 `broke N hardlink(s)` 告诉你断开了哪些（含 `package.json`，共 6 个）。
 >
 > 想验证这一点（不会动到真实 profile）：`node test/hardlink-safety.mjs`，它在临时目录里按同样方式建硬链接再跑安装，然后断言源码哈希没变。也可以设 `DSH_PROFILE_DIR=<某目录>` 把安装重定向到沙盒里。
+>
+> **目录重解析点（junction / 符号链接）**：硬链接是“同一个文件”，而 junction 是“同一个目录”，后者更危险：如果 `node_modules\dsh-agent-notify`（或它下面的 `lib`）是指向插件源码的 junction（pnpm `link:`、`link-workspace-packages`、`npm link` 都会造成这种布局），那么目标路径和源路径就指向同一个文件，`detach()` 的 `rmSync` 会**删掉源码本身**，紧接着 `cpSync` 因找不到源文件而报 `ENOENT` 退出——源码树会被写坏甚至清空。硬链接对 `realpathSync` 不可见，所以 `detach()` 这种“先删后写”的做法对 junction 无解。脚本因此在**任何写入之前**先做 `realpathSync` 检查，一旦发现 profile、安装目录、`lib`、`lib/releases` 或清单文件解析进了插件源码树，就直接拒绝安装并报 `resolves into the canonical plugin`。目标目录不存在时也能正确解析（会向上找到最近一级已存在的父目录再拼回剩余部分）。
 
 **热更新原理**：DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以安装副本里 `lib/index.js` 是一个永不变化的 shim，它每次激活时读 `lib/current-build.txt` 并 `import()` 对应的 `lib/releases/impl-*.js`；重新发布后只要配置重载（保存 profile `package.json` / 行开关切换都会触发），新代码就生效，**无需重启应用**。工作区里的 `lib/index.js` 始终是真正的实现源码。
 
@@ -79,7 +81,7 @@ node dsh-agent-notify/test/install.mjs
 | `cordis.patch.yml` | bundle patch：插入 `agent-notify` 行 |
 | `test/manual-test.mjs` | 无 DSH 的本地验证（逻辑自检 + 真实弹通知） |
 | `test/install.mjs` | 安装/更新到 profile（含热更新 shim；写入前断开硬链接） |
-| `test/hardlink-safety.mjs` | 回归测试：在沙盒里复现 pnpm 硬链接布局，断言安装不会破坏源码 |
+| `test/hardlink-safety.mjs` | 回归测试：在沙盒里复现 pnpm 硬链接布局 + junction 布局，断言安装不会破坏源码、且会拒绝目录重解析点 |
 | `test/hot-reload-probe.mjs` | 切换插件行开关，验证配置重载 |
 | `docs/toast-verified.png` | 实测截图：任务完成通知 |
 | `docs/toast-alerts.png` | 实测截图：需要选择通知 |
