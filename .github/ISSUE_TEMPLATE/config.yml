@@ -1,0 +1,11 @@
+# Repo metadata, so GitHub links and any registry that reads it point home.
+
+# Blank or placeholder issue reports are closed automatically; the bug template
+# below is the only supported intake for "the notification never appeared",
+# because that is always a log-versus-Windows-settings question.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Troubleshooting guide / 排查指南
+    url: https://github.com/Ssupervipuser/dsh-agent-notify#排查
+    about: Notifications silent, wrong app name, or nothing popped? Read this first — it covers the log path, the Windows notification settings, and the fallback card. / 通知没弹、来源名字不对？先看这里。
