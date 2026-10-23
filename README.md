@@ -23,9 +23,9 @@ A DeepSeek Harness (dsh) plugin that raises **real Windows notifications** — W
 
 Subagent sessions are skipped entirely, so a team of delegates never spams the desktop, and waiting alerts are rate-limited per session and kind (20 s by default) so retries cannot machine-gun you.
 
-![任务完成通知](docs/toast-verified.png)
+![任务完成通知](docs/toast-run-finished.png)
 
-![需要选择通知](docs/toast-alerts.png)
+![需要选择通知](docs/toast-waiting.png)
 
 ## Requirements / 环境要求
 
@@ -143,8 +143,8 @@ DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以
 | `test/installed-smoke.mjs` | 安装后的冒烟检查 |
 | `test/hardlink-safety.mjs` | 回归测试：在沙盒里复现 pnpm 硬链接布局 + junction 布局，断言安装不会破坏源码、且会拒绝目录重解析点 |
 | `test/hot-reload-probe.mjs` | 切换插件行开关，验证配置重载 |
-| `docs/toast-verified.png` | 实测截图：任务完成通知 |
-| `docs/toast-alerts.png` | 实测截图：需要选择通知 |
+| `docs/toast-run-finished.png` | 实测截图：任务完成通知 |
+| `docs/toast-waiting.png` | 实测截图：需要选择通知 |
 
 ## Security / 安全
 
