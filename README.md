@@ -25,6 +25,14 @@ Subagent sessions are skipped entirely, so a team of delegates never spams the d
 
 ![任务完成通知](docs/toast-run-finished.png)
 
+## 通道 / Channel
+
+- **主通道（Main path）**：`lib/notify.ps1` 调 WinRT `ToastNotificationManager` 发送真正的系统通知。 / sends a genuine WinRT toast via `ToastNotificationManager`.
+- **身份（名称 / 图标 / 点击）Identity (name / icon / click target)**：toast 只有在其 AppUserModelID 被**开始菜单快捷方式注册**过时，Windows 才会显示应用名称、图标和点击目标。所以插件不写死 AUMID，而是从应用自己的开始菜单快捷方式读取（本机为 `electron.app.DeepSeek Harness`），并且**只向已注册的 AUMID 发送**——写死一个未注册的 id 虽然不会报错，但会退化成“标题显示原始 id、没有图标、点了没反应”。 / Windows only attributes a toast (app name, icon, click target) when its AppUserModelID is registered by a Start Menu shortcut. The id is therefore discovered from the app's own shortcut and only registered ids are sent to; an unregistered id does not fail, it silently degrades into a banner titled with the raw id, no icon, and a dead click.
+- **点击行为（Click）**：不设 `launch` 属性时，点击由该 AUMID 的快捷方式激活；应用有单实例锁，于是等于把已打开的窗口带到前台，而不是再开一个。 / without a `launch` override the click activates the AUMID's shortcut, and the app's single-instance lock turns that into a focus of the existing window instead of a second copy.
+- **兜底（Fallback）**：系统没有 Toast API 或找不到已注册 AUMID 时，用 `lib/card.ps1` 画一张原生置顶卡片（不是网页弹窗）。 / a bundled native card, never a browser popup.
+- **中文不乱码（CJK safety）**：文案通过 UTF-8 JSON 任务单文件传给 PowerShell，不走命令行码页。 / the payload travels through a UTF-8 JSON file, never the console codepage.
+
 ![需要选择通知](docs/toast-waiting.png)
 
 ## Requirements / 环境要求
@@ -64,7 +72,8 @@ node dsh-agent-notify/test/install.mjs
 | `minDurationSec` | `0` | 只通知耗时超过 N 秒的“任务完成”（0 = 总是通知） |
 | `duration` | `long` | Toast 停留时长：`long`（≈25 秒）/ `short`（≈5 秒） |
 | `silent` | `false` | 静音（`silent="true"`） |
-| `appId` | `''` | 指定 AppUserModelID；空 = 先用桌面应用自己的 AUMID |
+| `appId` | `''` | 显式指定 AppUserModelID；空 = 自动读取已注册的 AUMID（推荐留空） |
+| `launch` | `''` | toast 的 `launch` 参数；空 = 点击激活应用快捷方式（推荐留空） |
 | `fallbackCard` | `true` | Toast 不可用时是否画兜底卡片 |
 | `cardSeconds` | `8` | 兜底卡片停留秒数 |
 | `skipWhenForeground` | `false` | 当前窗口标题已包含该会话时跳过通知 |
@@ -117,6 +126,7 @@ DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以
 日志：`%TEMP%\dsh-agent-notify.log`（插件激活、每次通知文案、Toast 用的 AUMID 与结果、兜底卡片是否触发）。
 
 - **通知没出现**：确认 Windows 设置 → 系统 → 通知里 “DeepSeek Harness” 是开启的，且没开专注/勿扰；勿扰时横幅不弹，但会进通知中心。
+- **通知显示成网址/原始 id、没有图标、点击没反应**：这是 AUMID 未被识别。日志 `registered AUMIDs:` 一行会列出脚本发现的已注册 id；若为空，说明开始菜单里没有带 AppUserModelID 的快捷方式（重装桌面应用可恢复）。
 - **Toast 被拒**：日志出现 `toast rejected appId=...` 时会走卡片兜底，可用配置 `appId` 指定其他已注册 AUMID。
 - **子会话不通知**：故意设计。
 - **本地验证**：`node test/manual-test.mjs` 用假 ctx 回放一次 run + 授权 + 提问，会真的弹出三条通知（并自检文案/冷却逻辑）。
@@ -143,6 +153,9 @@ DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以
 | `test/installed-smoke.mjs` | 安装后的冒烟检查 |
 | `test/hardlink-safety.mjs` | 回归测试：在沙盒里复现 pnpm 硬链接布局 + junction 布局，断言安装不会破坏源码、且会拒绝目录重解析点 |
 | `test/hot-reload-probe.mjs` | 切换插件行开关，验证配置重载 |
+| `test/click-focus.ps1` | 端到端验证：最小化窗口 → 发通知 → 真实点击横幅 → 断言窗口恢复并聚焦 |
+| `test/parse-check.ps1` | 只做语法解析、不执行，用于校验 PowerShell 脚本 |
+| `docs/capture-crop.ps1` | 只截取横幅区域，保证文档截图不含桌面与窗口标题 |
 | `docs/toast-run-finished.png` | 实测截图：任务完成通知 |
 | `docs/toast-waiting.png` | 实测截图：需要选择通知 |
 

@@ -22,3 +22,7 @@ Thumbs.db
 # NOTE: docs/toast-verified.png and docs/toast-alerts.png are real verification
 # screenshots and are intentionally tracked.
 docs/capture.png
+
+# Transient desktop screenshot written by docs/capture-crop.ps1.
+# NOTE: docs/toast-*.png are privacy-safe banner crops and ARE tracked.
+docs/capture-crop.png

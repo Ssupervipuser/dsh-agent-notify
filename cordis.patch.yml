@@ -39,3 +39,6 @@
         # Minimum seconds between two waiting alerts for the same session+kind,
         # so retries cannot spam the desktop.
         alertCooldownSec: 20
+        # Optional toast launch argument; empty = click activates the app's own
+        # Start Menu shortcut (the same identity Windows attributes the toast to).
+        launch: ''
