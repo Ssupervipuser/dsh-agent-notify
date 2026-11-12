@@ -127,6 +127,7 @@ DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以
 
 - **通知没出现**：确认 Windows 设置 → 系统 → 通知里 “DeepSeek Harness” 是开启的，且没开专注/勿扰；勿扰时横幅不弹，但会进通知中心。
 - **通知显示成网址/原始 id、没有图标、点击没反应**：这是 AUMID 未被识别。日志 `registered AUMIDs:` 一行会列出脚本发现的已注册 id；若为空，说明开始菜单里没有带 AppUserModelID 的快捷方式（重装桌面应用可恢复）。
+- **同一条通知弹两次**：配置重载或 HMR 重新激活时，旧版本会重复注册监听器。0.2.1 起改为幂等注册（再次 `apply()` 先销毁旧监听器）；若仍复现，检查日志里 `plugin activated ... listeners=N` 的 N 是否始终为 2。
 - **Toast 被拒**：日志出现 `toast rejected appId=...` 时会走卡片兜底，可用配置 `appId` 指定其他已注册 AUMID。
 - **子会话不通知**：故意设计。
 - **本地验证**：`node test/manual-test.mjs` 用假 ctx 回放一次 run + 授权 + 提问，会真的弹出三条通知（并自检文案/冷却逻辑）。
@@ -153,6 +154,7 @@ DSH 宿主按 URL 缓存 ESM 模块，直接改入口文件不会生效。所以
 | `test/installed-smoke.mjs` | 安装后的冒烟检查 |
 | `test/hardlink-safety.mjs` | 回归测试：在沙盒里复现 pnpm 硬链接布局 + junction 布局，断言安装不会破坏源码、且会拒绝目录重解析点 |
 | `test/hot-reload-probe.mjs` | 切换插件行开关，验证配置重载 |
+| `test/double-notify.mjs` | 回归测试：重复 `apply()` 不得叠加监听器，一次运行只发一条通知 |
 | `test/click-focus.ps1` | 端到端验证：最小化窗口 → 发通知 → 真实点击横幅 → 断言窗口恢复并聚焦 |
 | `test/parse-check.ps1` | 只做语法解析、不执行，用于校验 PowerShell 脚本 |
 | `docs/capture-crop.ps1` | 只截取横幅区域，保证文档截图不含桌面与窗口标题 |
